@@ -48,6 +48,97 @@
     --transition-smooth: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
+/* Light Theme Variables & Overrides */
+body.light-theme {
+    --bg-primary: #f8fafc;
+    --bg-secondary: #f1f5f9;
+    --bg-card: #ffffff;
+    --bg-hover: #f8fafc;
+    --bg-input: #ffffff;
+    --border-color: rgba(15, 23, 42, 0.08);
+    --border-focus: #4285F4;
+    
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
+    
+    --cat-feature-bg: rgba(52, 168, 83, 0.08);
+    --cat-feature-text: #15803d;
+    --cat-feature-border: rgba(52, 168, 83, 0.2);
+    
+    --cat-announcement-bg: rgba(66, 133, 244, 0.08);
+    --cat-announcement-text: #1d4ed8;
+    --cat-announcement-border: rgba(66, 133, 244, 0.2);
+    
+    --cat-changed-bg: rgba(251, 188, 5, 0.08);
+    --cat-changed-text: #b45309;
+    --cat-changed-border: rgba(251, 188, 5, 0.2);
+    
+    --cat-deprecated-bg: rgba(234, 67, 53, 0.08);
+    --cat-deprecated-text: #b91c1c;
+    --cat-deprecated-border: rgba(234, 67, 53, 0.2);
+    
+    --cat-fix-bg: rgba(100, 116, 139, 0.08);
+    --cat-fix-text: #475569;
+    --cat-fix-border: rgba(100, 116, 139, 0.2);
+}
+
+body.light-theme h1 {
+    background: linear-gradient(135deg, #0f172a 30%, #4f46e5 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+body.light-theme .bg-glow {
+    opacity: 0.02;
+}
+
+body.light-theme .card-content code {
+    background-color: rgba(15, 23, 42, 0.05);
+    color: #0f172a;
+}
+
+body.light-theme .pill {
+    background-color: var(--bg-card);
+}
+
+body.light-theme .pill:hover {
+    color: var(--text-primary);
+    border-color: var(--text-secondary);
+}
+
+body.light-theme .pill.active {
+    background-color: var(--google-blue);
+    color: white;
+    border-color: var(--google-blue);
+}
+
+body.light-theme .release-card:hover {
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+}
+
+body.light-theme .modal-content {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+}
+
+body.light-theme .tweet-card-preview {
+    background-color: var(--bg-card);
+}
+
+body.light-theme .tweet-media-preview {
+    background-color: var(--bg-secondary);
+}
+
+body.light-theme .tweet-textarea {
+    color: var(--text-primary);
+}
+
+body.light-theme .close-modal-btn:hover {
+    color: var(--text-primary);
+}
+
+
 /* Global Reset */
 * {
     box-sizing: border-box;
