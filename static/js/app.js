@@ -2,9 +2,9 @@
 let state = {
     releases: [],
     categories: [],
-    filter: 'all',
+    filter: localStorage.getItem('filter') || 'all',
     search: '',
-    sort: 'newest',
+    sort: localStorage.getItem('sort') || 'newest',
     isLoading: false,
     selectedRelease: null
 };
@@ -21,6 +21,8 @@ const elements = {
     releasesFeed: document.getElementById('releases-feed'),
     skeletonLoader: document.getElementById('skeleton-loader'),
     feedStatusMsg: document.getElementById('feed-status-msg'),
+    feedResultsInfo: document.getElementById('feed-results-info'),
+    resultsCount: document.getElementById('results-count'),
     
     // Modal Elements
     tweetModal: document.getElementById('tweet-modal'),
@@ -51,6 +53,97 @@ function formatDate(dateStr) {
     } catch (e) {
         return dateStr;
     }
+}
+
+// Calculate and append relative date indicators for updates within 30 days
+function getRelativeDateString(isoDateStr, displayDateStr) {
+    if (!isoDateStr) return displayDateStr;
+    try {
+        const updatedDate = new Date(isoDateStr);
+        const now = new Date();
+        
+        // Zero out times for date-only comparison
+        const d1 = new Date(updatedDate.getFullYear(), updatedDate.getMonth(), updatedDate.getDate());
+        const d2 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        
+        const diffTime = d2 - d1;
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        
+        if (diffDays === 0) {
+            return `${displayDateStr} (Today)`;
+        } else if (diffDays === 1) {
+            return `${displayDateStr} (Yesterday)`;
+        } else if (diffDays > 1 && diffDays <= 30) {
+            return `${displayDateStr} (${diffDays} days ago)`;
+        }
+        return displayDateStr;
+    } catch (e) {
+        return displayDateStr;
+    }
+}
+
+// Debounce helper to prevent excessive rendering calls
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// Safely highlight search terms within HTML by traversing text nodes only
+function highlightTextHTML(htmlContent, searchPhrase) {
+    if (!searchPhrase || !searchPhrase.trim()) return htmlContent;
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(`<div>${htmlContent}</div>`, 'text/html');
+    const container = doc.body.firstChild;
+    
+    const query = searchPhrase.toLowerCase().trim();
+    
+    function traverse(node) {
+        if (node.nodeType === Node.TEXT_NODE) {
+            const text = node.nodeValue;
+            const index = text.toLowerCase().indexOf(query);
+            if (index >= 0) {
+                const fragment = document.createDocumentFragment();
+                let currentText = text;
+                
+                while (true) {
+                    const idx = currentText.toLowerCase().indexOf(query);
+                    if (idx === -1) break;
+                    
+                    if (idx > 0) {
+                        fragment.appendChild(document.createTextNode(currentText.substring(0, idx)));
+                    }
+                    
+                    const mark = document.createElement('mark');
+                    mark.className = 'search-highlight';
+                    mark.textContent = currentText.substring(idx, idx + query.length);
+                    fragment.appendChild(mark);
+                    
+                    currentText = currentText.substring(idx + query.length);
+                }
+                
+                if (currentText.length > 0) {
+                    fragment.appendChild(document.createTextNode(currentText));
+                }
+                
+                node.parentNode.replaceChild(fragment, node);
+            }
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+            // Avoid highlighting inside tags that could break styles, like script/style (though we don't have them here)
+            // Traverse copy of child nodes array because node.childNodes will be mutated
+            const children = Array.from(node.childNodes);
+            children.forEach(child => traverse(child));
+        }
+    }
+    
+    traverse(container);
+    return container.innerHTML;
 }
 
 // Fetch releases from Python backend
@@ -98,6 +191,7 @@ async function fetchReleases(forceRefresh = false) {
 function showLoadingState() {
     elements.skeletonLoader.style.display = 'block';
     elements.releasesFeed.style.display = 'none';
+    if (elements.feedResultsInfo) elements.feedResultsInfo.style.display = 'none';
     elements.refreshBtn.classList.add('btn-primary');
     elements.refreshBtn.querySelector('.sync-icon').classList.add('spinning');
     elements.refreshBtn.disabled = true;
@@ -111,9 +205,14 @@ function hideLoadingState() {
 }
 
 function showStatus(msg, type = 'error') {
-    elements.feedStatusMsg.textContent = msg;
+    const textEl = elements.feedStatusMsg.querySelector('.status-text');
+    if (textEl) {
+        textEl.textContent = msg;
+    } else {
+        elements.feedStatusMsg.textContent = msg;
+    }
     elements.feedStatusMsg.className = `feed-status ${type}`;
-    elements.feedStatusMsg.style.display = 'block';
+    elements.feedStatusMsg.style.display = 'flex';
 }
 
 function hideStatus() {
@@ -175,6 +274,16 @@ function renderFeed() {
     const filtered = getFilteredAndSortedReleases();
     elements.releasesFeed.innerHTML = '';
     
+    // Update results count
+    if (elements.feedResultsInfo && elements.resultsCount) {
+        if (state.releases.length > 0 && !state.isLoading) {
+            elements.resultsCount.textContent = filtered.length;
+            elements.feedResultsInfo.style.display = 'block';
+        } else {
+            elements.feedResultsInfo.style.display = 'none';
+        }
+    }
+    
     if (filtered.length === 0) {
         elements.releasesFeed.innerHTML = `
             <div class="feed-status warning" style="display:block; background-color: rgba(255,255,255,0.02); border-color: var(--border-color); color: var(--text-secondary);">
@@ -192,6 +301,10 @@ function renderFeed() {
         
         const catClass = item.category.toLowerCase().replace(/\s+/g, '-');
         const displayDate = formatDate(item.date);
+        const relativeDate = getRelativeDateString(item.updated, displayDate);
+        
+        // Highlight search queries safely
+        const highlightedDescription = highlightTextHTML(item.description, state.search);
         
         card.innerHTML = `
             <div class="card-header">
@@ -205,12 +318,12 @@ function renderFeed() {
                         <line x1="8" y1="2" x2="8" y2="6"/>
                         <line x1="3" y1="10" x2="21" y2="10"/>
                     </svg>
-                    <span>${displayDate}</span>
+                    <span>${relativeDate}</span>
                 </time>
             </div>
             
             <div class="card-content">
-                ${item.description}
+                ${highlightedDescription}
             </div>
             
             <div class="card-footer">
@@ -228,6 +341,16 @@ function renderFeed() {
                         <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                     </svg>
                     <span>Copy</span>
+                </button>
+                <button class="btn btn-secondary btn-card-action share-btn" data-id="${item.id}">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="18" cy="5" r="3"/>
+                        <circle cx="6" cy="12" r="3"/>
+                        <circle cx="18" cy="19" r="3"/>
+                        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+                        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                    </svg>
+                    <span>Share</span>
                 </button>
                 <button class="btn btn-tweet btn-card-action tweet-btn" data-id="${item.id}">
                     <svg class="icon" viewBox="0 0 24 24" fill="currentColor">
@@ -247,7 +370,7 @@ function renderFeed() {
             const releaseId = btn.getAttribute('data-id');
             const release = state.releases.find(r => r.id === releaseId);
             if (release) {
-                openTweetComposer(release);
+                openTweetComposer(release, btn);
             }
         });
     });
@@ -262,16 +385,30 @@ function renderFeed() {
             }
         });
     });
+
+    // Attach Share click events
+    document.querySelectorAll('.share-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const releaseId = btn.getAttribute('data-id');
+            const release = state.releases.find(r => r.id === releaseId);
+            if (release) {
+                shareRelease(release, btn);
+            }
+        });
+    });
 }
 
-// Tweet Composer Modal Business Logic
+// Share Composer Modal Business Logic
 const HASHTAGS_SUFFIX = " #BigQuery #GoogleCloud";
 const MAX_TOTAL_CHARS = 280;
 const URL_MOCK_LENGTH = 23; // X counts all URLs as 23 characters
-// Budget for textarea = 280 - 23 (URL) - 23 (tags & spaces) = 234 characters
-const TWEET_TEXTAREA_MAX = MAX_TOTAL_CHARS - URL_MOCK_LENGTH - HASHTAGS_SUFFIX.length - 1; 
+// Budget for textarea = 280 - 23 (URL) - 1 (space) = 256 characters
+const TWEET_TEXTAREA_MAX = MAX_TOTAL_CHARS - URL_MOCK_LENGTH - 1; 
 
-function openTweetComposer(item) {
+let lastActiveElement = null;
+
+function openTweetComposer(item, triggerBtn) {
+    lastActiveElement = triggerBtn || document.activeElement;
     state.selectedRelease = item;
     
     const plainDesc = stripHtml(item.description)
@@ -279,17 +416,19 @@ function openTweetComposer(item) {
         .trim();
         
     const prefix = `BigQuery ${item.category} (${item.date}): `;
+    const hashtags = HASHTAGS_SUFFIX.trim();
     
-    // Calculate how many characters we can afford for the description
-    const budgetForDesc = TWEET_TEXTAREA_MAX - prefix.length;
+    // Calculate how many characters we can afford for description
+    const baseLength = prefix.length + hashtags.length + 1; // plus space
+    const budgetForDesc = TWEET_TEXTAREA_MAX - baseLength;
     
     let descText = plainDesc;
     if (descText.length > budgetForDesc) {
         descText = descText.substring(0, budgetForDesc - 3) + "...";
     }
     
-    // Set initial text inside textarea
-    const defaultComposeText = `${prefix}${descText}`;
+    // Set initial text inside textarea with hashtags visible
+    const defaultComposeText = `${prefix}${descText} ${hashtags}`;
     elements.tweetTextarea.value = defaultComposeText;
     elements.tweetTextarea.setAttribute('maxlength', TWEET_TEXTAREA_MAX);
     
@@ -309,8 +448,8 @@ function updateCharacterCount() {
     const currentLength = elements.tweetTextarea.value.length;
     
     // Character math:
-    // Total used = currentLength + URL_MOCK_LENGTH (23) + HASHTAGS_SUFFIX (22) + 1 (space)
-    const totalUsed = currentLength + URL_MOCK_LENGTH + HASHTAGS_SUFFIX.length + 1;
+    // Total used = currentLength + URL_MOCK_LENGTH (23) + 1 (space for link)
+    const totalUsed = currentLength + URL_MOCK_LENGTH + 1;
     const remaining = MAX_TOTAL_CHARS - totalUsed;
     
     elements.charCounter.textContent = remaining;
@@ -331,6 +470,11 @@ function closeTweetComposer() {
     elements.tweetModal.classList.remove('open');
     elements.tweetModal.setAttribute('aria-hidden', 'true');
     state.selectedRelease = null;
+    
+    if (lastActiveElement) {
+        lastActiveElement.focus();
+        lastActiveElement = null;
+    }
 }
 
 // Event Listeners setup
@@ -348,6 +492,8 @@ function setupEventListeners() {
         exportReleasesToCSV();
     });
     
+    const debouncedRenderFeed = debounce(renderFeed, 150);
+    
     // Search Box Input
     elements.searchInput.addEventListener('input', (e) => {
         state.search = e.target.value;
@@ -356,7 +502,7 @@ function setupEventListeners() {
         } else {
             elements.clearSearchBtn.style.display = 'none';
         }
-        renderFeed();
+        debouncedRenderFeed();
     });
     
     // Clear Search Click
@@ -378,12 +524,14 @@ function setupEventListeners() {
         pill.classList.add('active');
         
         state.filter = pill.getAttribute('data-category');
+        localStorage.setItem('filter', state.filter);
         renderFeed();
     });
     
     // Sort Select Change
     elements.sortSelect.addEventListener('change', (e) => {
         state.sort = e.target.value;
+        localStorage.setItem('sort', state.sort);
         renderFeed();
     });
     
@@ -408,8 +556,8 @@ function setupEventListeners() {
         const text = elements.tweetTextarea.value;
         const link = state.selectedRelease.link;
         
-        // Build the full tweet content: custom text + link + hashtags
-        const fullTweetText = `${text} ${link}${HASHTAGS_SUFFIX}`;
+        // Build the full tweet content: custom text (contains hashtags already) + link
+        const fullTweetText = `${text} ${link}`;
         
         // X/Twitter Web Intent URL
         const twitterUrl = `https://x.com/intent/post?text=${encodeURIComponent(fullTweetText)}`;
@@ -426,6 +574,34 @@ function setupEventListeners() {
             closeTweetComposer();
         }
     });
+
+    // Focus trap inside the active share modal
+    elements.tweetModal.addEventListener('keydown', (e) => {
+        if (e.key === 'Tab' && elements.tweetModal.classList.contains('open')) {
+            const focusables = elements.tweetModal.querySelectorAll('button, textarea');
+            if (focusables.length === 0) return;
+            const firstFocusable = focusables[0];
+            const lastFocusable = focusables[focusables.length - 1];
+            
+            if (e.shiftKey) { // Shift + Tab
+                if (document.activeElement === firstFocusable) {
+                    lastFocusable.focus();
+                    e.preventDefault();
+                }
+            } else { // Tab
+                if (document.activeElement === lastFocusable) {
+                    firstFocusable.focus();
+                    e.preventDefault();
+                }
+            }
+        }
+    });
+
+    // Hook up dismiss button for warning/error status messages
+    const dismissStatusBtn = document.getElementById('dismiss-status-btn');
+    if (dismissStatusBtn) {
+        dismissStatusBtn.addEventListener('click', hideStatus);
+    }
 }
 
 // Copy Release content to Clipboard
@@ -449,7 +625,69 @@ function copyReleaseToClipboard(item, btn) {
         }, 2000);
     }).catch(err => {
         console.error('Could not copy text: ', err);
+        const originalHTML = btn.innerHTML;
+        btn.classList.add('copy-failed');
+        btn.innerHTML = `
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+            <span>Failed!</span>
+        `;
+        setTimeout(() => {
+            btn.classList.remove('copy-failed');
+            btn.innerHTML = originalHTML;
+        }, 2000);
     });
+}
+
+// Share Release via navigator.share or fallback to clipboard link
+function shareRelease(item, btn) {
+    const plainDesc = stripHtml(item.description).trim();
+    const title = `BigQuery ${item.category} Update`;
+    const text = `BigQuery ${item.category} (${formatDate(item.date)}): ${plainDesc.substring(0, 120)}...`;
+    const url = item.link;
+    
+    if (navigator.share) {
+        navigator.share({
+            title: title,
+            text: text,
+            url: url
+        }).catch(err => {
+            console.log("Error sharing:", err);
+        });
+    } else {
+        // Fallback: Copy link and show temporary "Link Copied!" text
+        navigator.clipboard.writeText(url).then(() => {
+            const originalHTML = btn.innerHTML;
+            btn.classList.add('copied');
+            btn.innerHTML = `
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                <span>Link Copied!</span>
+            `;
+            setTimeout(() => {
+                btn.classList.remove('copied');
+                btn.innerHTML = originalHTML;
+            }, 2000);
+        }).catch(err => {
+            console.error("Failed to copy link:", err);
+            const originalHTML = btn.innerHTML;
+            btn.classList.add('copy-failed');
+            btn.innerHTML = `
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+                <span>Failed!</span>
+            `;
+            setTimeout(() => {
+                btn.classList.remove('copy-failed');
+                btn.innerHTML = originalHTML;
+            }, 2000);
+        });
+    }
 }
 
 // Export active releases feed as CSV file
@@ -544,5 +782,11 @@ function toggleTheme() {
 document.addEventListener('DOMContentLoaded', () => {
     initTheme();
     setupEventListeners();
+    
+    // Set initial sort dropdown value from persistent state
+    if (elements.sortSelect) {
+        elements.sortSelect.value = state.sort;
+    }
+    
     fetchReleases(false);
 });

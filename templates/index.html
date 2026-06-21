@@ -92,7 +92,8 @@
         <!-- Feed Container -->
         <main class="feed-section">
             <div class="feed-status" id="feed-status-msg" style="display: none;">
-                <!-- Error or status message -->
+                <span class="status-text"></span>
+                <button id="dismiss-status-btn" class="dismiss-status-btn" aria-label="Dismiss message">&times;</button>
             </div>
 
             <!-- Skeleton loading loader -->
@@ -100,6 +101,10 @@
                 <div class="skeleton-card"></div>
                 <div class="skeleton-card"></div>
                 <div class="skeleton-card"></div>
+            </div>
+
+            <div class="feed-results-info" id="feed-results-info" style="display: none;">
+                Showing <span id="results-count">0</span> updates
             </div>
 
             <div id="releases-feed" class="releases-feed">
@@ -117,7 +122,7 @@
     <div id="tweet-modal" class="modal-overlay" aria-hidden="true" role="dialog" aria-labelledby="modal-title">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 id="modal-title">Tweet Update</h2>
+                <h2 id="modal-title">Share on X</h2>
                 <button id="close-modal" class="close-modal-btn" aria-label="Close dialog">&times;</button>
             </div>
             <div class="modal-body">
@@ -129,8 +134,8 @@
                             </svg>
                         </div>
                         <div class="tweet-author-info">
-                            <span class="tweet-author-name">Cloud Explorer</span>
-                            <span class="tweet-author-handle">@cloud_release</span>
+                            <span class="tweet-author-name">Your Account</span>
+                            <span class="tweet-author-handle">@your_handle</span>
                         </div>
                     </div>
                     
