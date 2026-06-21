@@ -12,6 +12,7 @@ let state = {
 // DOM Elements
 const elements = {
     refreshBtn: document.getElementById('refresh-btn'),
+    exportCsvBtn: document.getElementById('export-csv-btn'),
     searchInput: document.getElementById('search-input'),
     clearSearchBtn: document.getElementById('clear-search'),
     categoryPills: document.getElementById('category-pills-container'),
@@ -220,6 +221,13 @@ function renderFeed() {
                     </svg>
                 </a>
                 ` : ''}
+                <button class="btn btn-secondary btn-card-action copy-btn" data-id="${item.id}">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                    </svg>
+                    <span>Copy</span>
+                </button>
                 <button class="btn btn-tweet btn-card-action tweet-btn" data-id="${item.id}">
                     <svg class="icon" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
@@ -239,6 +247,17 @@ function renderFeed() {
             const release = state.releases.find(r => r.id === releaseId);
             if (release) {
                 openTweetComposer(release);
+            }
+        });
+    });
+
+    // Attach Copy click events
+    document.querySelectorAll('.copy-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const releaseId = btn.getAttribute('data-id');
+            const release = state.releases.find(r => r.id === releaseId);
+            if (release) {
+                copyReleaseToClipboard(release, btn);
             }
         });
     });
@@ -319,6 +338,11 @@ function setupEventListeners() {
     elements.refreshBtn.addEventListener('click', () => {
         fetchReleases(true);
     });
+
+    // Export CSV Click
+    elements.exportCsvBtn.addEventListener('click', () => {
+        exportReleasesToCSV();
+    });
     
     // Search Box Input
     elements.searchInput.addEventListener('input', (e) => {
@@ -398,6 +422,76 @@ function setupEventListeners() {
             closeTweetComposer();
         }
     });
+}
+
+// Copy Release content to Clipboard
+function copyReleaseToClipboard(item, btn) {
+    const plainDesc = stripHtml(item.description).trim();
+    const copyText = `BigQuery Release Note (${formatDate(item.date)})\nCategory: ${item.category}\n\n${plainDesc}\n\nLink: ${item.link}`;
+    
+    navigator.clipboard.writeText(copyText).then(() => {
+        const originalHTML = btn.innerHTML;
+        btn.classList.add('copied');
+        btn.innerHTML = `
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            <span>Copied!</span>
+        `;
+        
+        setTimeout(() => {
+            btn.classList.remove('copied');
+            btn.innerHTML = originalHTML;
+        }, 2000);
+    }).catch(err => {
+        console.error('Could not copy text: ', err);
+    });
+}
+
+// Export active releases feed as CSV file
+function exportReleasesToCSV() {
+    const filtered = getFilteredAndSortedReleases();
+    if (filtered.length === 0) {
+        alert("No release notes available to export.");
+        return;
+    }
+    
+    const headers = ["ID", "Date", "Category", "Link", "Description"];
+    const escapeCSV = (text) => {
+        if (!text) return "";
+        return `"${text.replace(/"/g, '""')}"`;
+    };
+    
+    const rows = [
+        headers.join(","),
+        ...filtered.map(item => {
+            const cleanDesc = stripHtml(item.description)
+                .replace(/\s+/g, ' ')
+                .trim();
+            return [
+                escapeCSV(item.id),
+                escapeCSV(item.date),
+                escapeCSV(item.category),
+                escapeCSV(item.link),
+                escapeCSV(cleanDesc)
+            ].join(",");
+        })
+    ];
+    
+    const csvContent = "\ufeff" + rows.join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    
+    const filterName = state.filter === 'all' ? 'all' : state.filter.toLowerCase().replace(/\s+/g, '-');
+    const filename = `bigquery_release_notes_${filterName}_${new Date().toISOString().slice(0, 10)}.csv`;
+    
+    link.setAttribute("href", url);
+    link.setAttribute("download", filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }
 
 // Initial App Boot
