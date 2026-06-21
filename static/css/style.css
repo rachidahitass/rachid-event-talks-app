@@ -138,6 +138,19 @@ body.light-theme .close-modal-btn:hover {
     color: var(--text-primary);
 }
 
+body.light-theme .card-content a {
+    color: #1d4ed8;
+    border-bottom-color: rgba(29, 78, 216, 0.4);
+}
+
+body.light-theme .card-content a:hover {
+    color: #1e40af;
+}
+
+body.light-theme .category-tag.update {
+    background-color: rgba(15, 23, 42, 0.04);
+}
+
 
 /* Global Reset */
 * {
@@ -548,7 +561,7 @@ h1 {
 /* Card Content / Description */
 .card-content {
     font-size: 0.95rem;
-    color: #e2e8f0;
+    color: var(--text-primary);
     line-height: 1.6;
 }
 
